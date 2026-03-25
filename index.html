@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Document Word Finder</title>
+
+  <!-- PDF.js for PDF reading -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+
+  <!-- JSZip for DOCX reading -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+  <style>
+    body { font-family: Arial; max-width: 800px; margin: 40px auto; }
+    label { font-weight: bold; margin-top: 20px; display: block; }
+    input[type="file"], input[type="text"] { width: 100%; margin-top: 8px; }
+    button { margin-top: 20px; padding: 10px 20px; font-size: 16px; cursor: pointer; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+    th { background: #f0f0f0; }
+  </style>
+</head>
+<body>
+
+<h1>Document Word Finder</h1>
+
+<label>Upload PDF, DOCX, or TXT:</label>
+<input type="file" id="fileInput">
+
+<label>Words to search (comma-separated):</label>
+<input type="text" id="wordsInput" placeholder="example: ai, strategy, data">
+
+<button onclick="analyze()">Analyze</button>
+
+<div id="results"></div>
+
+<script>
+async function extractPDF(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  let text = "";
+
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    text += content.items.map(i => i.str).join(" ") + " ";
+  }
+  return text;
+}
+
+async function extractDOCX(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const zip = await JSZip.loadAsync(arrayBuffer);
+  const doc = await zip.file("word/document.xml").async("string");
+
+  // Strip XML tags
+  return doc.replace(/<[^>]+>/g, " ");
+}
+
+async function extractTXT(file) {
+  return await file.text();
+}
+
+async function extractText(file) {
+  const name = file.name.toLowerCase();
+
+  if (name.endsWith(".pdf")) return extractPDF(file);
+  if (name.endsWith(".docx")) return extractDOCX(file);
+  if (name.endsWith(".txt")) return extractTXT(file);
+
+  return "";
+}
+
+function countWords(text, targets) {
+  text = text.toLowerCase();
+  const words = text.match(/\w+/g) || [];
+  const counts = {};
+
+  targets.forEach(t => {
+    t = t.trim().toLowerCase();
+    counts[t] = words.filter(w => w === t).length;
+  });
+
+  return { counts, total: words.length };
+}
+
+async function analyze() {
+  const file = document.getElementById("fileInput").files[0];
+  const wordsRaw = document.getElementById("wordsInput").value;
+
+  if (!file || !wordsRaw) {
+    alert("Please upload a file and enter words.");
+    return;
+  }
+
+  const targets = wordsRaw.split(",").map(w => w.trim()).filter(w => w);
+  const text = await extractText(file);
+  const { counts, total } = countWords(text, targets);
+
+  let html = `<h2>Results for ${file.name}</h2>`;
+  html += `<p>Total words in document: <strong>${total}</strong></p>`;
+  html += `<table><tr><th>Word</th><th>Count</th></tr>`;
+
+  for (const [word, count] of Object.entries(counts)) {
+    html += `<tr><td>${word}</td><td>${count}</td></tr>`;
+  }
+
+  html += `</table>`;
+  document.getElementById("results").innerHTML = html;
+}
+</script>
+
+</body>
+</html>
